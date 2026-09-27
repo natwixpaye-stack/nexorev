@@ -1,0 +1,24 @@
+services:
+  - type: web
+    name: nexorev
+    env: node
+    plan: free
+    buildCommand: cd server && npm install
+    startCommand: cd server && node server.js
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: JWT_SECRET
+        generateValue: true
+      - key: PORT
+        value: 10000
+    healthCheckPath: /api/health
+    # Pour persistance, ajoute un disque (nécessite plan payant) ou utilise une DB externe
+    # disks:
+    #   - name: nexorev-data
+    #     mountPath: /opt/render/project/src
+    #     sizeGB: 1
+
+# Pour base de données externe gratuite (recommandé pour persistance vraie)
+# Va sur https://neon.tech ou https://supabase.com
+# Crée un projet gratuit et ajoute DATABASE_URL dans envVars

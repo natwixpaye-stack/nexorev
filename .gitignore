@@ -1,0 +1,8 @@
+node_modules/
+nexorev-database.json
+cloudflared
+*.zip
+.env
+.DS_Store
+uploads/
+*.log

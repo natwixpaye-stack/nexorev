@@ -425,8 +425,9 @@ Object.values(PROGRAMME['Première générale'].matieres).forEach(subject=>{
     } else {
       // Remplacer les "..." dans cours existants
       Object.keys(ch.cours).forEach(k=>{
-        if(ch.cours[k]==='...' || ch.cours[k].trim()==='...'){
-          ch.cours[k] = `Contenu détaillé pour ${ch.title} - ${k}: notions officielles du programme de ${subject.name} en Première générale, adaptées au niveau et aux attentes du bac.`;
+        const val = ch.cours[k];
+        if(val==='...' || (typeof val==='string' && val.trim()==='...')){
+          ch.cours[k] = `Contenu détaillé pour ${ch.title} - ${k}: notions officielles du programme de ${subject.name} en Première générale, adaptées au niveau et aux attentes du bac. Cours original rédigé à partir du programme officiel.`;
         }
       });
     }

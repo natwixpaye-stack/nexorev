@@ -166,12 +166,8 @@ function logActivity(type, title, subjectId){
 function renderLanding(){
   $app.innerHTML = `
   <div class="landing">
-    <nav class="landing-nav">
+    <nav class="landing-nav" style="justify-content:flex-start">
       <div class="logo"><div class="logo-mark"><span>N</span></div><div>NexoRév<small>Ta réussite, notre priorité</small></div></div>
-      <div style="display:flex;gap:10px">
-        <button class="btn btn-ghost" onclick="App.showLogin()">Se connecter</button>
-        <button class="btn btn-primary" onclick="App.startOnboarding()">Créer mon espace</button>
-      </div>
     </nav>
     <div class="landing-hero">
       <div>

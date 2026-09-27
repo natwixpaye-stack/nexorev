@@ -12,6 +12,18 @@
 <body class="dark">
 <div id="app"></div>
 <script src="data.js"></script>
-<script type="module" src="app.js"></script>
+<script src="app.js"></script>
+<script>
+  // Fallback check: if DATA not loaded after 1s, try reload
+  setTimeout(()=>{
+    if(!window.NEXO_DATA || !window.NEXO_DATA.SPECIALITES || window.NEXO_DATA.SPECIALITES.length===0){
+      console.warn('DATA still missing after 1s, retrying...');
+      // Try to fetch data.js again
+      fetch('data.js').then(r=>r.text()).then(t=>{
+        console.log('data.js fetched, length', t.length);
+      });
+    }
+  }, 1000);
+</script>
 </body>
 </html>

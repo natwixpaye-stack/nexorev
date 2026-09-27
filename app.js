@@ -1,20 +1,42 @@
 /* NexoRév - App principale - Version sans mot de passe, bugs corrigés - ROBUSTE */
+function getDATA(){
+  try{
+    if(window.NEXO_DATA && window.NEXO_DATA.SPECIALITES && window.NEXO_DATA.SPECIALITES.length>0){
+      return window.NEXO_DATA;
+    }
+    if(window.NEXO_DATA && window.NEXO_DATA.PROGRAMME){
+      return window.NEXO_DATA;
+    }
+  }catch(e){}
+  return window.NEXO_DATA || DATA_FALLBACK;
+}
+
+let DATA_FALLBACK = { SPECIALITES: [], COMMUNES: [], PROGRAMME: { 'Première générale': { matieres: {} } } };
 let DATA = null;
 try{
-  DATA = window.NEXO_DATA;
-}catch(e){ console.error('DATA load error', e); }
-if(!DATA){
-  try{ DATA = window.NEXO_DATA; }catch{}
+  DATA = window.NEXO_DATA || DATA_FALLBACK;
+}catch(e){ 
+  console.error('DATA load error', e); 
+  DATA = DATA_FALLBACK;
 }
 if(!DATA || !DATA.PROGRAMME){
   console.warn('DATA missing, using minimal fallback');
-  DATA = DATA || { SPECIALITES: [], PROGRAMME: {} };
-  DATA.PROGRAMME = DATA.PROGRAMME || {};
-  if(!DATA.PROGRAMME['Première générale']){
-    DATA.PROGRAMME['Première générale'] = { matieres: {} };
-  }
-  DATA.SPECIALITES = DATA.SPECIALITES || [];
+  DATA = DATA_FALLBACK;
 }
+
+// Force reload DATA from window if available after 100ms (for module timing issues)
+setTimeout(()=>{
+  try{
+    if(window.NEXO_DATA && window.NEXO_DATA.SPECIALITES && window.NEXO_DATA.SPECIALITES.length>0){
+      DATA = window.NEXO_DATA;
+      console.log('DATA reloaded after delay, SPECIALITES:', DATA.SPECIALITES.length);
+      // If we are in onboarding step 3 and no specialites shown, re-render
+      if(state && state.showOnboarding && state.onboardingStep===3){
+        App.render();
+      }
+    }
+  }catch(e){}
+}, 200);
 
 const $app = document.getElementById('app');
 if(!$app){
@@ -167,8 +189,9 @@ function uid(){ return Math.random().toString(36).slice(2,9) + Date.now().toStri
 function getProgrammeForUser(user){
   try{
     const classe = user?.classe || 'Première générale';
-    if(!DATA || !DATA.PROGRAMME) return { matieres: {}, specialites: [] };
-    const prog = DATA.PROGRAMME[classe] || DATA.PROGRAMME['Première générale'] || { matieres: {} };
+    const currentData = getDATA();
+    if(!currentData || !currentData.PROGRAMME) return { matieres: {}, specialites: [] };
+    const prog = currentData.PROGRAMME[classe] || currentData.PROGRAMME['Première générale'] || { matieres: {} };
     return prog;
   }catch(e){
     console.error('getProgramme error', e);
@@ -316,7 +339,12 @@ function renderOnboardingModal(){
     if(!showSpecs){
       body=`<h2>Pas de spécialités pour ${d.classe} 🙂</h2><p>On passe à la suite.</p><div style="margin-top:18px;display:flex;justify-content:space-between"><button class="btn btn-ghost" onclick="App.onboardPrev()">Retour</button><button class="btn btn-primary" onclick="App.onboardNext()">Continuer →</button></div>`;
     } else {
-      body=`<h2>Quelles sont tes spécialités ? ⭐</h2><p>Choisis 3 spécialités (tu pourras modifier plus tard).</p><div class="chip-grid">${DATA.SPECIALITES.map(s=>`<div class="chip ${d.specialites.includes(s.id)?'selected':''}" onclick="App.toggleSpec('${s.id}')">${s.icon} ${s.name}</div>`).join('')}</div>
+      const currentData = getDATA();
+      const specsList = currentData.SPECIALITES || [];
+      console.log('Rendering specialites, count:', specsList.length, 'from', currentData ? 'real DATA' : 'fallback');
+      body=`<h2>Quelles sont tes spécialités ? ⭐</h2><p>Choisis 3 spécialités (tu pourras modifier plus tard).</p>
+      ${specsList.length===0?`<div style="padding:12px;background:rgba(239,68,68,0.1);border-radius:8px;color:#F87171;font-size:12px">⚠️ Chargement des spécialités... Si ça reste vide, recharge la page. DATA: ${currentData ? 'présent' : 'manquant'} / SPECIALITES: ${specsList.length}</div>`:''}
+      <div class="chip-grid">${specsList.map(s=>`<div class="chip ${d.specialites.includes(s.id)?'selected':''}" onclick="App.toggleSpec('${s.id}')">${s.icon} ${s.name}</div>`).join('')}</div>
       <div style="margin-top:12px;font-size:12px;color:var(--text-2)">${d.specialites.length} sélectionnée(s) — min 1</div>
       <div id="specError" style="color:#F87171;font-size:12px;margin-top:6px;display:none">Sélectionne au moins 1 spécialité</div>
       <div style="margin-top:18px;display:flex;justify-content:space-between"><button class="btn btn-ghost" onclick="App.onboardPrev()">Retour</button><button class="btn btn-primary" id="step3Btn" onclick="App.onboardNext()">Continuer →</button></div>`;
@@ -451,7 +479,7 @@ function renderDashboard(user){
   <div class="greeting">
     <div class="greet-left">
       <div class="greet-avatar">👤</div>
-      <div class="greet-text"><h1>Salut ${user.prenom} 👋</h1><p>Prêt à faire progresser ton niveau aujourd'hui ? • ${user.classe} • Spés: ${user.specialites.map(id=>DATA.SPECIALITES.find(s=>s.id===id)?.short||id).join(', ')||'à définir'}</p></div>
+      <div class="greet-text"><h1>Salut ${user.prenom} 👋</h1><p>Prêt à faire progresser ton niveau aujourd'hui ? • ${user.classe} • Spés: ${user.specialites.map(id=>{ const d=getDATA(); return d.SPECIALITES.find(s=>s.id===id)?.short||id; }).join(', ')||'à définir'}</p></div>
     </div>
     <div class="motiv-banner"><img src="https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=600&q=80&auto=format&fit=crop" alt=""><div class="overlay"></div><div class="txt">Les grands rêves se construisent avec de bonnes habitudes.</div></div>
   </div>
@@ -489,7 +517,7 @@ function renderDashboard(user){
         `).join('') : `<div class="empty" style="padding:16px"><b>Aucune échéance</b><span>Ajoute tes contrôles dans Planning</span></div>`}
       </div><div class="side-panel"><h3>🕘 Mes dernières activités <span class="link" style="margin-left:auto" onclick="App.navigate('progression')">Voir tout →</span></h3>
         ${activities.length? activities.map(a=>`
-          <div class="ech-item"><div class="ech-ico" style="background:var(--bg-3)">${a.type==='Exercice'?'✏️':a.type==='Quiz'?'🧠':a.type==='Fiche'?'🗂️':'📖'}</div><div><b>${a.type} : ${a.title}</b><span>${DATA.PROGRAMME[user.classe]?.matieres[a.subjectId]?.name||''} • ${a.mins} min</span></div></div>
+          <div class="ech-item"><div class="ech-ico" style="background:var(--bg-3)">${a.type==='Exercice'?'✏️':a.type==='Quiz'?'🧠':a.type==='Fiche'?'🗂️':'📖'}</div><div><b>${a.type} : ${a.title}</b><span>${(getDATA().PROGRAMME[user.classe]?.matieres[a.subjectId]?.name)||''} • ${a.mins} min</span></div></div>
         `).join('') : `<div class="empty" style="padding:16px"><b>Commence à réviser</b></div>`}
       </div><div class="motiv-card"><img src="https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=600&q=80&auto=format&fit=crop"><div class="overlay"></div><div class="txt">Tu es plus capable que tu ne le penses.</div><button class="btn btn-primary" style="position:relative;z-index:1;background:white;color:#4C1D95" onclick="App.openChapter('maths','suites')">Continuer ma révision →</button></div></div></div>
   `;

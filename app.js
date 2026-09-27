@@ -1,10 +1,50 @@
-/* NexoRév - App principale - Version sans mot de passe, bugs corrigés */
-const DATA = window.NEXO_DATA;
+/* NexoRév - App principale - Version sans mot de passe, bugs corrigés - ROBUSTE */
+let DATA = null;
+try{
+  DATA = window.NEXO_DATA;
+}catch(e){ console.error('DATA load error', e); }
+if(!DATA){
+  try{ DATA = window.NEXO_DATA; }catch{}
+}
+if(!DATA || !DATA.PROGRAMME){
+  console.warn('DATA missing, using minimal fallback');
+  DATA = DATA || { SPECIALITES: [], PROGRAMME: {} };
+  DATA.PROGRAMME = DATA.PROGRAMME || {};
+  if(!DATA.PROGRAMME['Première générale']){
+    DATA.PROGRAMME['Première générale'] = { matieres: {} };
+  }
+  DATA.SPECIALITES = DATA.SPECIALITES || [];
+}
+
 const $app = document.getElementById('app');
+if(!$app){
+  console.error('#app not found');
+} else {
+  // Global error handler to show something instead of blank background
+  window.addEventListener('error', (e)=>{
+    console.error('Global error', e.error||e.message);
+    try{
+      const el = document.getElementById('app');
+      if(el && !el.innerHTML.trim()){
+        el.innerHTML = `<div style="padding:40px;text-align:center;color:white"><h2>⚠️ Erreur de chargement</h2><p style="color:#8B95B5">${e.message||'Erreur JS'}</p><button class="btn btn-primary" onclick="location.reload()">Recharger</button><pre style="text-align:left;background:#111A33;padding:12px;border-radius:8px;margin-top:16px;overflow:auto;font-size:11px">${(e.error&&e.error.stack)||''}</pre></div>`;
+      }
+    }catch{}
+  });
+}
+
+function safeLocalStorageGet(key, fallback=null){
+  try{ return localStorage.getItem(key) || fallback; }catch(e){ console.warn('localStorage get failed', key, e); return fallback; }
+}
+function safeLocalStorageSet(key, val){
+  try{ localStorage.setItem(key, val); }catch(e){ console.warn('localStorage set failed', key, e); }
+}
+function safeLocalStorageRemove(key){
+  try{ localStorage.removeItem(key); }catch(e){}
+}
 
 const API = {
   base: '',
-  token: localStorage.getItem('nexorev_token')||null,
+  token: safeLocalStorageGet('nexorev_token'),
   async request(path, opts={}){
     try{
       const headers = { 'Content-Type':'application/json', ...(opts.headers||{}) };
@@ -21,15 +61,15 @@ const API = {
   async register(payload){
     const data = await this.request('/api/register', { method:'POST', body: JSON.stringify(payload) });
     this.token = data.token;
-    localStorage.setItem('nexorev_token', data.token);
-    localStorage.setItem('nexorev_current_backend', data.user.id);
+    safeLocalStorageSet('nexorev_token', data.token);
+    safeLocalStorageSet('nexorev_current_backend', data.user.id);
     return data;
   },
   async login(payload){
     const data = await this.request('/api/login', { method:'POST', body: JSON.stringify(payload) });
     this.token = data.token;
-    localStorage.setItem('nexorev_token', data.token);
-    localStorage.setItem('nexorev_current_backend', data.user.id);
+    safeLocalStorageSet('nexorev_token', data.token);
+    safeLocalStorageSet('nexorev_current_backend', data.user.id);
     return data;
   },
   async me(){
@@ -47,17 +87,17 @@ const API = {
   },
   logout(){
     this.token=null;
-    localStorage.removeItem('nexorev_token');
-    localStorage.removeItem('nexorev_current_backend');
+    safeLocalStorageRemove('nexorev_token');
+    safeLocalStorageRemove('nexorev_current_backend');
   }
 };
 
 const Store = {
-  getUsers(){ try{return JSON.parse(localStorage.getItem('nexorev_users')||'[]')}catch{return[]} },
-  saveUsers(u){ localStorage.setItem('nexorev_users', JSON.stringify(u)) },
-  getCurrentId(){ return localStorage.getItem('nexorev_current') || localStorage.getItem('nexorev_current_backend') },
-  setCurrentId(id){ localStorage.setItem('nexorev_current', id); localStorage.setItem('nexorev_current_backend', id); },
-  clearCurrent(){ localStorage.removeItem('nexorev_current'); localStorage.removeItem('nexorev_current_backend'); API.logout(); },
+  getUsers(){ try{ const v = safeLocalStorageGet('nexorev_users'); return v ? JSON.parse(v) : []; }catch{return[]} },
+  saveUsers(u){ try{ safeLocalStorageSet('nexorev_users', JSON.stringify(u)); }catch{} },
+  getCurrentId(){ return safeLocalStorageGet('nexorev_current') || safeLocalStorageGet('nexorev_current_backend') },
+  setCurrentId(id){ safeLocalStorageSet('nexorev_current', id); safeLocalStorageSet('nexorev_current_backend', id); },
+  clearCurrent(){ safeLocalStorageRemove('nexorev_current'); safeLocalStorageRemove('nexorev_current_backend'); API.logout(); },
   _cachedUser: null,
   async getCurrentUserAsync(){
     if(API.token){
@@ -116,7 +156,7 @@ let state = {
   onboardingData: {prenom:'', classe:'Première générale', specialites:[], objectif:'Tout à la fois', temps:'30 min'},
   showLogin: false,
   showOnboarding: false,
-  theme: localStorage.getItem('nexorev_theme')||'dark',
+  theme: safeLocalStorageGet('nexorev_theme','dark'),
   programmeFilter: 'all',
   exoFilter: {matiere:'all', diff:'all'},
   planningFilter: 'all',
@@ -125,32 +165,49 @@ let state = {
 
 function uid(){ return Math.random().toString(36).slice(2,9) + Date.now().toString(36).slice(2,5) }
 function getProgrammeForUser(user){
-  const classe = user?.classe || 'Première générale';
-  const prog = DATA.PROGRAMME[classe] || DATA.PROGRAMME['Première générale'];
-  return prog;
+  try{
+    const classe = user?.classe || 'Première générale';
+    if(!DATA || !DATA.PROGRAMME) return { matieres: {}, specialites: [] };
+    const prog = DATA.PROGRAMME[classe] || DATA.PROGRAMME['Première générale'] || { matieres: {} };
+    return prog;
+  }catch(e){
+    console.error('getProgramme error', e);
+    return { matieres: {} };
+  }
 }
 function getUserSubjects(user){
-  const prog = getProgrammeForUser(user);
-  const specs = (user?.specialites||[]).map(id=> prog.matieres[id]).filter(Boolean);
-  const communes = Object.values(prog.matieres).filter(m=>m.type==='commune');
-  return {specs, communes, all: [...specs, ...communes]};
+  try{
+    const prog = getProgrammeForUser(user);
+    if(!prog || !prog.matieres) return {specs:[], communes:[], all:[]};
+    const specs = (user?.specialites||[]).map(id=> prog.matieres[id]).filter(Boolean);
+    const communes = Object.values(prog.matieres).filter(m=>m.type==='commune');
+    return {specs, communes, all: [...specs, ...communes]};
+  }catch(e){
+    console.error('getUserSubjects error', e);
+    return {specs:[], communes:[], all:[]};
+  }
 }
 function calcSubjectProgress(user, subjectId){
-  if(!user?.progress?.subjects?.[subjectId]) return 0;
-  const subj = getProgrammeForUser(user).matieres[subjectId];
-  if(!subj) return 0;
-  const completed = user.progress.subjects[subjectId].chaptersCompleted?.length||0;
-  return Math.round((completed / subj.chapitres.length)*100);
+  try{
+    if(!user?.progress?.subjects?.[subjectId]) return 0;
+    const prog = getProgrammeForUser(user);
+    const subj = prog?.matieres?.[subjectId];
+    if(!subj || !subj.chapitres) return 0;
+    const completed = user.progress.subjects[subjectId].chaptersCompleted?.length||0;
+    return Math.round((completed / subj.chapitres.length)*100);
+  }catch(e){ return 0; }
 }
 function calcGlobalProgress(user){
-  const {all} = getUserSubjects(user);
-  if(!all.length) return 0;
-  let total=0, done=0;
-  all.forEach(s=>{
-    total+=s.chapitres.length;
-    done+= user.progress?.subjects?.[s.id]?.chaptersCompleted?.length||0;
-  });
-  return total? Math.round(done/total*100):0;
+  try{
+    const {all} = getUserSubjects(user);
+    if(!all.length) return 0;
+    let total=0, done=0;
+    all.forEach(s=>{
+      total+=s.chapitres.length;
+      done+= user.progress?.subjects?.[s.id]?.chaptersCompleted?.length||0;
+    });
+    return total? Math.round(done/total*100):0;
+  }catch(e){ return 0; }
 }
 function logActivity(type, title, subjectId){
   const activity = { type, title, subjectId, mins: Math.floor(Math.random()*12)+3 };
@@ -164,7 +221,9 @@ function logActivity(type, title, subjectId){
 
 /* RENDER LANDING */
 function renderLanding(){
-  $app.innerHTML = `
+  try{
+    if(!$app){ console.error('No #app'); return; }
+    $app.innerHTML = `
   <div class="landing">
     <nav class="landing-nav" style="justify-content:flex-start">
       <div class="logo"><div class="logo-mark"><span>N</span></div><div>NexoRév<small>Ta réussite, notre priorité</small></div></div>
@@ -205,6 +264,10 @@ function renderLanding(){
   </div>`;
   document.body.className = state.theme;
   if(state.showLogin) loadBackendUsers();
+  }catch(e){
+    console.error('renderLanding error', e);
+    $app.innerHTML = `<div style="padding:40px;color:white"><h2>Erreur chargement</h2><p>${e.message}</p><button class="btn btn-primary" onclick="location.reload()">Recharger</button></div>`;
+  }
 }
 
 function renderLoginModal(){
@@ -279,6 +342,7 @@ function renderOnboardingModal(){
 }
 
 function renderApp(){
+  try{
   const user = Store.getCurrentUser();
   if(!user){ renderLanding(); return; }
   const prog = getProgrammeForUser(user);
@@ -352,6 +416,10 @@ function renderApp(){
   `;
   if(window.innerWidth<=860) document.getElementById('menuBtn').style.display='grid';
   attachSearchResults();
+  }catch(e){
+    console.error('renderApp error', e);
+    $app.innerHTML = `<div style="padding:40px;color:white"><h2>Erreur app</h2><p>${e.message}</p><pre style="font-size:11px;background:#111A33;padding:12px;border-radius:8px;overflow:auto">${e.stack||''}</pre><button class="btn btn-primary" onclick="Store.clearCurrent(); location.reload()">Reset</button></div>`;
+  }
 }
 
 function renderContent(user){
